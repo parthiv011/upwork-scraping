@@ -1,21 +1,12 @@
-const { connect } = require("puppeteer-real-browser");
+const connectToBrowser = require("./browser");
+const loginToUpwork = require("./login");
 const fs = require("fs");
 const { Parser } = require("json2csv");
 
-async function test() {
-  const { browser, page } = await connect({
-    headless: false,
-    args: [
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--user-data-dir=C:\\Users\\DELL\\AppData\\Local\\Google\\Chrome\\User Data",
-      "--profile-directory=Profile 2",
-    ],
-    customConfig: {
-      executablePath:
-        "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-    },
-  });
+async function fetchJobs() {
+  const { browser, page } = await connectToBrowser();
+
+  await loginToUpwork(page);
 
   const baseURL =
     "https://www.upwork.com/nx/search/jobs/?contractor_tier=3&from_recent_search=true&payment_verified=1&q=aws%20lambda&sort=recency";
@@ -41,7 +32,6 @@ async function test() {
         const spentMatch = text.match(/\$\d+[kK]?\+?\s+spent/);
         const clientSpent = spentMatch ? spentMatch[0] : "Not listed";
 
-        // Extract estimated job budget e.g. "Hourly: $20 – $30" or "Fixed-price: $500"
         const budgetMatch = text.match(
           /(?:Hourly|Fixed-price):\s+\$[\d,.]+(?:\s+–\s+\$[\d,.]+)?/
         );
@@ -68,7 +58,7 @@ async function test() {
     console.error("❌ Error writing CSV:", err);
   }
 
-  await browser.close();
+  // await browser.close();
 }
 
-test();
+fetchJobs();
