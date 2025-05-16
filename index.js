@@ -27,21 +27,39 @@ async function fetchJobs() {
         const title = titleElem?.innerText.trim() || "N/A";
         const link = titleElem?.href || "N/A";
 
-        const text = article.innerText;
+        // Client spent
+        const spentElem = article.querySelector('[data-test="total-spent"]');
+        const clientSpent = spentElem
+          ? spentElem.innerText.trim()
+          : "Not listed";
 
-        const spentMatch = text.match(/\$\d+[kK]?\+?\s+spent/);
-        const clientSpent = spentMatch ? spentMatch[0] : "Not listed";
+        // Estimated budget or job info block
+        const jobInfoBlock = article.querySelector('[data-test="JobInfo"]');
+        const estimatedBudget = jobInfoBlock
+          ? jobInfoBlock.innerText.trim().replace(/\s+/g, " ")
+          : "Not listed";
 
-        const budgetMatch = text.match(
-          /(?:Hourly|Fixed-price):\s+\$[\d,.]+(?:\s+–\s+\$[\d,.]+)?/
+        // Job description
+        const descElem = article.querySelector(
+          '[data-test="UpCLineClamp JobDescription"]'
         );
-        const estimatedBudget = budgetMatch ? budgetMatch[0] : "Not listed";
+        const jobDescription = descElem
+          ? descElem.innerText.trim().replace(/\s+/g, " ")
+          : "Not listed";
 
-        const paymentVerified = text.includes("Payment verified")
+        // Payment verified
+        const paymentVerified = article.innerText.includes("Payment verified")
           ? "Yes"
           : "No";
 
-        return { title, link, clientSpent, estimatedBudget, paymentVerified };
+        return {
+          title,
+          link,
+          clientSpent,
+          estimatedBudget,
+          jobDescription,
+          paymentVerified,
+        };
       });
     });
 
@@ -58,7 +76,7 @@ async function fetchJobs() {
     console.error("❌ Error writing CSV:", err);
   }
 
-  // await browser.close();
+  await browser.close();
 }
 
 fetchJobs();
