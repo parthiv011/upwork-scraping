@@ -21,7 +21,9 @@ async function test() {
     //     password:'<proxy-password>'
     // }
   });
-  await page.goto("https://www.upwork.com/nx/search/jobs/?from_recent_search=true&q=aws%20lambda");
+  await page.goto(
+    "https://www.upwork.com/nx/search/jobs/?from_recent_search=true&q=aws%20lambda"
+  );
 }
 
 test();
