@@ -73,19 +73,20 @@ def generate_proposal(job_data):
     title = job_data["title"]
     # client_spent = job_data["clientSpent"]
     # estimated_budget = job_data["estimatedBudget"]
+    tech_stack = job_data["techStack"]
     job_description = job_data["jobDescription"]
     # payment_verified = job_data["paymentVerified"]
 
     greeting = "Hi there,"
     introduction = "I'm Raymond Reddington, a freelance developer with several years of experience delivering high-quality web solutions."
     sign_off = "Looking forward to hearing from you.\n\nBest regards,\nRaymond Reddington"
-    prompt = f"""
-You are an expert freelance proposal writer. Write the core body of professional, and client-centered proposal for a freelance job.
+    prompt = fprompt = f"""
+Write the main body of a professional and client-focused freelance proposal based on the provided job description. Emphasize relevant experience, align skills with the client's needs, and include a thoughtful question to show genuine interest in the project. Avoid greetings or sign-offs—focus only on the core content. 
 Details:
 Title: {title}
-Job Summary: {job_description}...
-Freelancer's skill set: {MY_SKILLSET}
-Past works and projects: 
+Job Summary: {job_description}
+Tech Stack Required for the job: {tech_stack}
+Past works and projects of The Freelancer: 
 Global Fair - cloud based computer vision solution that helps them identify vendors of desired wood patterns out of a 32k strong SKU list
 Wright Research - custom technology architecture and management for their end to end investment platform and internal operational tools
 Paterson Securities - AI based solution to attract GenZ customers
@@ -93,15 +94,16 @@ TIGC - end to end platform development and management. ecom, stores, supply chai
 Snuckworks Platforms - GenAI solution to automate compliance reports
 Fonepay - end to end security, technology review and upgrade for Nepal's largest fintech company
 Centre of Development of Advanced Computing - skill building for big data, AI, analytics
-[Need to confirm the name] partnered with a Series A-funded hyper-local grocery delivery startup to revamp their technology and operations—implementing ITIL processes, optimizing architecture, and improving quality control—which led to a 17% faster delivery time, 23% fewer bugs, and complete technical debt clearance in 3 months.
-[Need to confirm Name] collaborated with a global contract formulation company—serving clients like Unilever and P&G—to develop a custom cloud-based solution that streamlined formulation tracking, integrated machine learning for optimal raw material selection, and enhanced workflow approvals, resulting in a 92% reduction in raw material selection errors, a 6% drop in customer complaints, and a 12% improvement in turnaround time within two months of deployment.
-[Need to confirm Name]collaborated with a global intelligence and technology solutions provider to develop a custom AI-powered platform that streamlined third-party risk assessments by integrating four AI models across multiple cloud services, resulting in automated, human-like reports with minimal input and sustained relevance over time.
-[Need to confirm Name] conducted a comprehensive technology audit for a leading fintech company processing over 1 million transactions every 15 hours, identifying critical issues in their complex tech stack—including multiple databases, microservices, and third-party integrations—and provided actionable recommendations on architecture, scalability, security, and disaster recovery, aligning with the company's strategic growth roadmap.
+partnered with a Series A-funded hyper-local grocery delivery startup to revamp their technology and operations—implementing ITIL processes, optimizing architecture, and improving quality control—which led to a 17% faster delivery time, 23% fewer bugs, and complete technical debt clearance in 3 months.
+collaborated with a global contract formulation company—serving clients like Unilever and P&G—to develop a custom cloud-based solution that streamlined formulation tracking, integrated machine learning for optimal raw material selection, and enhanced workflow approvals, resulting in a 92% reduction in raw material selection errors, a 6% drop in customer complaints, and a 12% improvement in turnaround time within two months of deployment.
+collaborated with a global intelligence and technology solutions provider to develop a custom AI-powered platform that streamlined third-party risk assessments by integrating four AI models across multiple cloud services, resulting in automated, human-like reports with minimal input and sustained relevance over time.
+conducted a comprehensive technology audit for a leading fintech company processing over 1 million transactions every 15 hours, identifying critical issues in their complex tech stack—including multiple databases, microservices, and third-party integrations—and provided actionable recommendations on architecture, scalability, security, and disaster recovery, aligning with the company's strategic growth roadmap.
 Point to consider while writing proposal:
-1. A relevant past project or experience make very specific to job title.
-2. How our skills align with this specific job keep very precise and specific to job description.
-3. One thoughtful question showing genuine interest in the project.
-Do not include greetings, introductions, or sign-offs—only the core body. Keep it conversational, professional, and about 200 words at max 2 paragraph.
+1. How the freelancer's skills relate directly to the job title(role) : {title}
+2. Precise alignment with the job's technical and project requirements.
+3. A past project highly relevant to this role—be specific and concise.
+4. Be precise with the skill set alligning with job requirements do not focus on all the skills.
+5. Write it under 2-3 paragraphs only short and simple and how we will approach the project with our skills.
 """
     try:
         response = openai.chat.completions.create(
