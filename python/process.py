@@ -123,6 +123,7 @@ Point to consider while writing proposal:
     except Exception as e:
         print(f"Error generating proposal with OpenAI: {e}")
         return None
+    
 def main():
     df = read_csv_file(file_path)
     if df is None:

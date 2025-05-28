@@ -37,7 +37,7 @@ app.post("/protected", verifyFirebaseToken, (req, res) => {
 
 app.get("/extract-jobs", verifyFirebaseToken, async (req, res) => {
   const keywords = req.query.keywords?.split(",") || ["aws lambda", "node.js"];
-  const totalPages = Number(req.query.pages || 2);
+  const totalPages = Number(req.query.pages || 3);
   const allJobs = [];
 
   const { browser, page } = await connectToBrowser();
@@ -131,7 +131,18 @@ app.get("/extract-jobs", verifyFirebaseToken, async (req, res) => {
     const fs = require("fs");
     const path = require("path");
     const outputPath = path.join(__dirname, "upwork_jobs.csv");
-    fs.writeFileSync(outputPath, csv, { encoding: "utf-8" });
+
+    const fileExists = fs.existsSync(outputPath);
+
+    let csvContent = fileExists
+      ? parser.parse(allJobs, { header: false })
+      : parser.parse(allJobs);
+
+    if (fileExists) {
+      fs.appendFileSync(outputPath, "\n" + csvContent, { encoding: "utf-8" });
+    } else {
+      fs.writeFileSync(outputPath, csvContent, { encoding: "utf-8" });
+    }
 
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader(
@@ -139,6 +150,7 @@ app.get("/extract-jobs", verifyFirebaseToken, async (req, res) => {
       "attachment; filename=upwork_jobs.csv"
     );
     // res.send("\uFEFF" + csv);
+    res.status(200).send("Done extracting!")
   } catch (err) {
     console.error("❌ Error writing CSV:", err);
     res.status(500).send("Failed to generate CSV");
