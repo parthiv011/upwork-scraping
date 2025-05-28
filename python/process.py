@@ -2,6 +2,7 @@ import pandas as pd
 import openai
 from dotenv import load_dotenv
 import os
+import sys
 # Load environment variables
 load_dotenv()
 
@@ -121,8 +122,10 @@ Point to consider while writing proposal:
         full_proposal = f"{greeting}\n\n{introduction}\n\n{middle_section}\n\n{sign_off}"
         return full_proposal
     except Exception as e:
-        print(f"Error generating proposal with OpenAI: {e}")
+        print(f"Error generating proposal with OpenAI: {e}", file=sys.stderr)
         return None
+
+
     
 def main():
     df = read_csv_file(file_path)

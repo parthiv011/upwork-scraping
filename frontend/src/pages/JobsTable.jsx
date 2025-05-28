@@ -103,7 +103,7 @@ const JobsTable = () => {
           </div>
         </div>
       )}
-      
+
       {data.length > 0 ? (
         <>
           <div className="rounded-lg border border-gray-300 shadow-sm max-h-[80vh] overflow-y-auto">
@@ -180,7 +180,9 @@ const JobsTable = () => {
                           }`}
                           onClick={() => handleGenerate(row)}
                         >
-                          Generate Proposal
+                          {row.proposal && row.proposal.trim().length > 0
+                            ? "View Proposal"
+                            : "Generate Proposal"}
                         </button>
                       </td>
                     </tr>
