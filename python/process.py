@@ -139,5 +139,6 @@ def main():
         print(f"\nAll proposals generated")
     except Exception as e:
         print(f"Error saving CSV: {e}")
+        
 if __name__ == "__main__":
     main()
