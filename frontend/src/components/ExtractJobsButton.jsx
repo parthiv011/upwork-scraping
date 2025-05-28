@@ -153,7 +153,12 @@ const ExtractJobsButton = () => {
 
             <div className="flex justify-end space-x-2">
               <button
-                onClick={() => setShowModal(false)}
+                onClick={() => {
+                  setSelectedKeywords([]);
+                  setPages(2);
+                  setFeedback("");
+                  setShowModal(false);
+                }}
                 className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300"
               >
                 Cancel

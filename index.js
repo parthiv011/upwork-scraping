@@ -125,20 +125,52 @@ app.get("/extract-jobs", verifyFirebaseToken, async (req, res) => {
   await browser.close();
 
   try {
-    const parser = new Parser({ withBOM: false });
-    const csv = parser.parse(allJobs);
-
     const fs = require("fs");
     const path = require("path");
+    const { Parser } = require("json2csv");
+    const csvParser = require("csv-parser");
+
     const outputPath = path.join(__dirname, "upwork_jobs.csv");
+
+    // Read existing data if file exists
+    let existingJobs = [];
+
+    function readCSVAsync(filePath) {
+      return new Promise((resolve, reject) => {
+        const results = [];
+        fs.createReadStream(filePath)
+          .pipe(csvParser())
+          .on("data", (data) => results.push(data))
+          .on("end", () => resolve(results))
+          .on("error", reject);
+      });
+    }
+    if (fs.existsSync(outputPath)) {
+      existingJobs = await readCSVAsync(outputPath);
+    }
+
+    // console.log("------------------------", existingJobs);
+
+    // Combine old and new jobs
+    const combinedJobs = [...existingJobs, ...allJobs];
+    // console.log(combinedJobs);
+
+    // Deduplicate based on title + link + date
+    const seen = new Set();
+    const dedupedJobs = combinedJobs.filter((job) => {
+      const key = `${job.title}-${job.link}-${job.date}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    // Convert to CSV and write
+    const parser = new Parser({ withBOM: false });
+    const csv = parser.parse(dedupedJobs);
+
     fs.writeFileSync(outputPath, csv, { encoding: "utf-8" });
 
-    res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader(
-      "Content-Disposition",
-      "attachment; filename=upwork_jobs.csv"
-    );
-    // res.send("\uFEFF" + csv);
+    res.status(200).json({ message: "CSV file updated successfully." });
   } catch (err) {
     console.error("❌ Error writing CSV:", err);
     res.status(500).send("Failed to generate CSV");
@@ -176,14 +208,18 @@ app.post("/generate-proposal", verifyFirebaseToken, (req, res) => {
     output += data.toString();
   });
 
-  py.stderr.on("data", (data) => {
-    console.error(`❌ Python error: ${data}`);
+  console.log(output);
+
+  py.stdout.on("data", (data) => {
+    output += data.toString();
   });
 
   py.on("close", (code) => {
     if (code !== 0) {
       return res.status(500).json({ error: "Failed to generate proposal" });
     }
+
+    console.log("✅ Generated proposal:", output);
     res.json({ proposal: output.trim() });
   });
 });

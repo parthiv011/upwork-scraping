@@ -6,6 +6,8 @@ const JobsTable = () => {
   const [error, setError] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const entriesPerPage = 5;
+  const [showModal, setShowModal] = useState(false);
+  const [proposalContent, setProposalContent] = useState("");
 
   const handleGenerate = async (job) => {
     try {
@@ -24,10 +26,12 @@ const JobsTable = () => {
         body: JSON.stringify(job),
       });
 
+      console.log(res);
       const data = await res.json();
 
       if (res.ok) {
-        alert("Proposal:\n" + data.proposal);
+        setProposalContent(data.proposal);
+        setShowModal(true);
       } else {
         alert("Failed to generate proposal.");
       }
@@ -79,7 +83,27 @@ const JobsTable = () => {
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {error && <p className="text-red-500">{error}</p>}
-
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-center justify-center px-4">
+          <div className="bg-white max-w-2xl w-full p-6 rounded-lg shadow-lg space-y-4 relative">
+            <h2 className="text-lg font-semibold text-gray-800">
+              Generated Proposal
+            </h2>
+            <div className="text-sm text-gray-700 whitespace-pre-wrap max-h-[60vh] overflow-y-auto border p-3 rounded bg-gray-50">
+              {proposalContent}
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setShowModal(false)}
+                className="mt-4 px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {data.length > 0 ? (
         <>
           <div className="rounded-lg border border-gray-300 shadow-sm max-h-[80vh] overflow-y-auto">
