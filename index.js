@@ -126,158 +126,141 @@ app.get("/extract-jobs", verifyFirebaseToken, async (req, res) => {
   await browser.close();
 
   try {
-    const fs = require("fs");
-    const path = require("path");
-    const { Parser } = require("json2csv");
-    const csvParser = require("csv-parser");
-
-    const outputPath = path.join(__dirname, "upwork_jobs.csv");
-
-    // Read existing data if file exists
-    let existingJobs = [];
-
-    function readCSVAsync(filePath) {
-      return new Promise((resolve, reject) => {
-        const results = [];
-        fs.createReadStream(filePath)
-          .pipe(csvParser())
-          .on("data", (data) => results.push(data))
-          .on("end", () => resolve(results))
-          .on("error", reject);
-      });
-    }
-    if (fs.existsSync(outputPath)) {
-      existingJobs = await readCSVAsync(outputPath);
-    }
-
-    // console.log("------------------------", existingJobs);
-
-    // Combine old and new jobs
-    const combinedJobs = [...existingJobs, ...allJobs];
-    // console.log(combinedJobs);
-
-    // Deduplicate based on title + link + date
+    const db = require("./db");
     const seen = new Set();
-    const dedupedJobs = combinedJobs.filter((job) => {
+    const dedupedJobs = allJobs.filter((job) => {
       const key = `${job.title}-${job.link}-${job.date}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
 
-    // Convert to CSV and write
-    const parser = new Parser({ withBOM: false });
-    const csv = parser.parse(dedupedJobs);
+    let savedCount = 0;
 
-    fs.writeFileSync(outputPath, csv, { encoding: "utf-8" });
+    for (const job of dedupedJobs) {
+      const rawKey = `${job.title}-${job.date}`;
+      const docKey = rawKey.replace(/[^\w]/gi, "_").slice(0, 100);
 
-    res.status(200).json({ message: "CSV file updated successfully." });
+      try {
+        const docRef = db.collection("jobs").doc(docKey);
+        const existing = await docRef.get();
+
+        if (!existing.exists) {
+          await docRef.set({
+            ...job,
+            userId: req.user.uid,
+            createdAt: new Date(),
+          });
+          savedCount++;
+          console.log(`✅ Saved job: ${job.title}`);
+        } else {
+          console.log(`ℹ️ Job already exists: ${job.title}`);
+        }
+      } catch (error) {
+        console.error(
+          `❌ Error saving job "${job.title}" (${docKey}):`,
+          error.message
+        );
+      }
+    }
+
+    res
+      .status(200)
+      .json({ message: `${savedCount} new jobs saved to Firestore.` });
   } catch (err) {
     console.error("❌ Error writing CSV:", err);
     res.status(500).send("Failed to generate CSV");
   }
 });
 
-app.get("/jobs", verifyFirebaseToken, (req, res) => {
-  const filePath = path.join(__dirname, "upwork_jobs.csv");
+app.get("/jobs", verifyFirebaseToken, async (req, res) => {
+  try {
+    const db = require("./db");
+    const snapshot = await db
+      .collection("jobs")
+      .where("userId", "==", req.user.uid)
+      .orderBy("createdAt", "desc")
+      .limit(100)
+      .get();
 
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ message: "CSV file not found" });
-  }
+    const jobs = [];
 
-  const results = [];
-
-  fs.createReadStream(filePath)
-    .pipe(csv({ mapHeaders: ({ header }) => header.replace(/^\uFEFF/, "") }))
-    .on("data", (data) => results.push(data))
-    .on("end", () => {
-      res.json(results);
-    })
-    .on("error", (err) => {
-      console.error("❌ Error reading CSV:", err);
-      res.status(500).json({ message: "Failed to read CSV" });
+    snapshot.forEach((doc) => {
+      jobs.push({ id: doc.id, ...doc.data() });
     });
-});
 
+    res.status(200).json({
+      message: `${jobs.length} jobs fetched successfully.`,
+      data: jobs,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching jobs from Firestore:", error.message);
+    res.status(500).json({ message: "Failed to fetch jobs." });
+  }
+});
 const csvFilePath = path.join(__dirname, "upwork_jobs.csv");
 
-app.post("/generate-proposal", verifyFirebaseToken, (req, res) => {
+app.post("/generate-proposal", verifyFirebaseToken, async (req, res) => {
   const jobData = req.body;
-  const updatedRows = [];
-  let foundProposal = null;
+  if (!jobData || !jobData.title || !jobData.link || !jobData.date) {
+    return res.status(400).json({ error: "Invalid job data" });
+  }
 
-  // First read the CSV and check if the proposal already exists
-  fs.createReadStream(csvFilePath)
-    .pipe(csv())
-    .on("data", (row) => {
-      if (row.title === jobData.title) {
-        if (row.proposal && row.proposal.trim().length > 0) {
-          foundProposal = row.proposal;
-        }
-      }
-      updatedRows.push(row);
-    })
-    .on("end", () => {
-      if (foundProposal) {
-        console.log("⚠️ Proposal already exists. Skipping generation.");
-        return res.json({ proposal: foundProposal.trim(), cached: true });
-      }
+  const rawKey = `${jobData.title}-${jobData.date}`;
+  const docKey = rawKey.replace(/[^\w]/gi, "_").slice(0, 100);
 
-      // No proposal found — generate it using Python
-      const py = spawn("py", [
-        "python/job_proposal.py",
-        JSON.stringify(jobData),
-      ]);
+  try {
+    const db = require("./db");
+    const jobRef = db.collection("jobs").doc(docKey);
+    const jobSnap = await jobRef.get();
 
-      let output = "";
-      let errorOutput = "";
+    if (!jobSnap.exists) {
+      return res.status(404).json({ error: "Job not found in Firestore" });
+    }
 
-      py.stdout.on("data", (data) => {
-        output += data.toString();
-      });
+    const jobDoc = jobSnap.data();
 
-      py.stderr.on("data", (data) => {
-        errorOutput += data.toString();
-      });
+    if (jobDoc.proposal && jobDoc.proposal.trim().length > 0) {
+      console.log("⚠️ Proposal already exists. Returning cached.");
+      return res.json({ proposal: jobDoc.proposal.trim(), cached: true });
+    }
 
-      py.on("close", (code) => {
-        if (code !== 0 || errorOutput) {
-          console.error("❌ Python error:", errorOutput.trim());
-          return res.status(500).json({
-            error: "Failed to generate proposal",
-            details: errorOutput.trim(),
-          });
-        }
+    const py = spawn("py", ["python/job_proposal.py", JSON.stringify(jobData)]);
 
-        const proposalText = output.trim();
+    let output = "";
+    let errorOutput = "";
 
-        // Update the proposal field for the matching job
-        const finalRows = updatedRows.map((row) =>
-          row.title === jobData.title ? { ...row, proposal: proposalText } : row
-        );
-
-        const headers = Object.keys(finalRows[0]).map((key) => ({
-          id: key,
-          title: key,
-        }));
-
-        const csvWriter = createCsvWriter({
-          path: csvFilePath,
-          header: headers,
-        });
-
-        csvWriter
-          .writeRecords(finalRows)
-          .then(() => {
-            console.log("✅ Proposal generated and saved.");
-            res.json({ proposal: proposalText });
-          })
-          .catch((err) => {
-            console.error("❌ Error writing CSV:", err);
-            res.status(500).json({ error: "Failed to update CSV" });
-          });
-      });
+    py.stdout.on("data", (data) => {
+      output += data.toString();
     });
+
+    py.stderr.on("data", (data) => {
+      errorOutput += data.toString();
+    });
+
+    py.on("close", async (code) => {
+      if (code !== 0 || errorOutput) {
+        console.error("❌ Python error:", errorOutput.trim());
+        return res.status(500).json({
+          error: "Failed to generate proposal",
+          details: errorOutput.trim(),
+        });
+      }
+
+      const proposalText = output.trim();
+
+      await jobRef.update({
+        proposal: proposalText,
+        proposalGeneratedAt: new Date(),
+      });
+
+      console.log("✅ Proposal saved to Firestore.");
+      return res.json({ proposal: proposalText });
+    });
+  } catch (error) {
+    console.error("❌ Error generating proposal:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 app.listen(PORT, () => {

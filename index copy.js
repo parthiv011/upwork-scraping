@@ -6,6 +6,7 @@ const csv = require("csv-parser");
 
 const { Parser } = require("json2csv");
 const { spawn } = require("child_process");
+const createCsvWriter = require("csv-writer").createObjectCsvWriter;
 
 const admin = require("./firebaseAdmin");
 const connectToBrowser = require("./browser");
@@ -37,7 +38,7 @@ app.post("/protected", verifyFirebaseToken, (req, res) => {
 
 app.get("/extract-jobs", verifyFirebaseToken, async (req, res) => {
   const keywords = req.query.keywords?.split(",") || ["aws lambda", "node.js"];
-  const totalPages = Number(req.query.pages || 3);
+  const totalPages = Number(req.query.pages || 2);
   const allJobs = [];
 
   const { browser, page } = await connectToBrowser();
@@ -125,32 +126,52 @@ app.get("/extract-jobs", verifyFirebaseToken, async (req, res) => {
   await browser.close();
 
   try {
-    const parser = new Parser({ withBOM: false });
-    const csv = parser.parse(allJobs);
-
     const fs = require("fs");
     const path = require("path");
+    const { Parser } = require("json2csv");
+    const csvParser = require("csv-parser");
+
     const outputPath = path.join(__dirname, "upwork_jobs.csv");
 
-    const fileExists = fs.existsSync(outputPath);
+    // Read existing data if file exists
+    let existingJobs = [];
 
-    let csvContent = fileExists
-      ? parser.parse(allJobs, { header: false })
-      : parser.parse(allJobs);
-
-    if (fileExists) {
-      fs.appendFileSync(outputPath, "\n" + csvContent, { encoding: "utf-8" });
-    } else {
-      fs.writeFileSync(outputPath, csvContent, { encoding: "utf-8" });
+    function readCSVAsync(filePath) {
+      return new Promise((resolve, reject) => {
+        const results = [];
+        fs.createReadStream(filePath)
+          .pipe(csvParser())
+          .on("data", (data) => results.push(data))
+          .on("end", () => resolve(results))
+          .on("error", reject);
+      });
+    }
+    if (fs.existsSync(outputPath)) {
+      existingJobs = await readCSVAsync(outputPath);
     }
 
-    res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader(
-      "Content-Disposition",
-      "attachment; filename=upwork_jobs.csv"
-    );
-    // res.send("\uFEFF" + csv);
-    res.status(200).send("Done extracting!")
+    // console.log("------------------------", existingJobs);
+
+    // Combine old and new jobs
+    const combinedJobs = [...existingJobs, ...allJobs];
+    // console.log(combinedJobs);
+
+    // Deduplicate based on title + link + date
+    const seen = new Set();
+    const dedupedJobs = combinedJobs.filter((job) => {
+      const key = `${job.title}-${job.link}-${job.date}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    // Convert to CSV and write
+    const parser = new Parser({ withBOM: false });
+    const csv = parser.parse(dedupedJobs);
+
+    fs.writeFileSync(outputPath, csv, { encoding: "utf-8" });
+
+    res.status(200).json({ message: "CSV file updated successfully." });
   } catch (err) {
     console.error("❌ Error writing CSV:", err);
     res.status(500).send("Failed to generate CSV");
@@ -178,26 +199,85 @@ app.get("/jobs", verifyFirebaseToken, (req, res) => {
     });
 });
 
+const csvFilePath = path.join(__dirname, "upwork_jobs.csv");
+
 app.post("/generate-proposal", verifyFirebaseToken, (req, res) => {
   const jobData = req.body;
+  const updatedRows = [];
+  let foundProposal = null;
 
-  const py = spawn("py", ["python/job_proposal.py", JSON.stringify(jobData)]);
+  // First read the CSV and check if the proposal already exists
+  fs.createReadStream(csvFilePath)
+    .pipe(csv())
+    .on("data", (row) => {
+      if (row.title === jobData.title) {
+        if (row.proposal && row.proposal.trim().length > 0) {
+          foundProposal = row.proposal;
+        }
+      }
+      updatedRows.push(row);
+    })
+    .on("end", () => {
+      if (foundProposal) {
+        console.log("⚠️ Proposal already exists. Skipping generation.");
+        return res.json({ proposal: foundProposal.trim(), cached: true });
+      }
 
-  let output = "";
-  py.stdout.on("data", (data) => {
-    output += data.toString();
-  });
+      // No proposal found — generate it using Python
+      const py = spawn("py", [
+        "python/job_proposal.py",
+        JSON.stringify(jobData),
+      ]);
 
-  py.stderr.on("data", (data) => {
-    console.error(`❌ Python error: ${data}`);
-  });
+      let output = "";
+      let errorOutput = "";
 
-  py.on("close", (code) => {
-    if (code !== 0) {
-      return res.status(500).json({ error: "Failed to generate proposal" });
-    }
-    res.json({ proposal: output.trim() });
-  });
+      py.stdout.on("data", (data) => {
+        output += data.toString();
+      });
+
+      py.stderr.on("data", (data) => {
+        errorOutput += data.toString();
+      });
+
+      py.on("close", (code) => {
+        if (code !== 0 || errorOutput) {
+          console.error("❌ Python error:", errorOutput.trim());
+          return res.status(500).json({
+            error: "Failed to generate proposal",
+            details: errorOutput.trim(),
+          });
+        }
+
+        const proposalText = output.trim();
+
+        // Update the proposal field for the matching job
+        const finalRows = updatedRows.map((row) =>
+          row.title === jobData.title ? { ...row, proposal: proposalText } : row
+        );
+
+        const headers = Object.keys(finalRows[0]).map((key) => ({
+          id: key,
+          title: key,
+        }));
+
+        const csvWriter = createCsvWriter({
+          path: csvFilePath,
+          header: headers,
+        });
+
+        csvWriter
+          .writeRecords(finalRows)
+          .then(() => {
+            console.log("✅ Proposal generated and saved.");
+            res.json({ proposal: proposalText });
+          })
+          .catch((err) => {
+            console.error("❌ Error writing CSV:", err);
+            res.status(500).json({ error: "Failed to update CSV" });
+          });
+      });
+    });
 });
 
 app.listen(PORT, () => {

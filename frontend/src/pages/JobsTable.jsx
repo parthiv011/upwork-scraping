@@ -11,6 +11,13 @@ const JobsTable = () => {
 
   const handleGenerate = async (job) => {
     try {
+      // If proposal exists locally, show modal immediately (no fetch)
+      if (job.proposal && job.proposal.trim().length > 0) {
+        setProposalContent(job.proposal);
+        setShowModal(true);
+        return;
+      }
+
       const auth = getAuth();
       const user = auth.currentUser;
       if (!user) throw new Error("User not authenticated");
@@ -26,14 +33,22 @@ const JobsTable = () => {
         body: JSON.stringify(job),
       });
 
-      console.log(res);
       const data = await res.json();
 
       if (res.ok) {
         setProposalContent(data.proposal);
         setShowModal(true);
+
+        // Update local state so next time proposal exists and modal opens instantly
+        setData((prevData) =>
+          prevData.map((item) =>
+            item.title === job.title
+              ? { ...item, proposal: data.proposal }
+              : item
+          )
+        );
       } else {
-        alert("Failed to generate proposal.");
+        alert(data.error || "Failed to generate proposal.");
       }
     } catch (err) {
       console.error("Error generating proposal:", err);
@@ -50,6 +65,7 @@ const JobsTable = () => {
 
         const token = await user.getIdToken();
 
+        // console.log(token);
         const res = await fetch("http://localhost:3000/jobs", {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -59,7 +75,7 @@ const JobsTable = () => {
         if (!res.ok) throw new Error("Network response was not ok");
 
         const json = await res.json();
-        setData(json);
+        setData(json.data);
         setError(null);
       } catch (err) {
         console.error("Fetch error:", err);
