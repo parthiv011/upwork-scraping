@@ -263,6 +263,40 @@ app.post("/generate-proposal", verifyFirebaseToken, async (req, res) => {
   }
 });
 
+app.post("/edit-proposal", verifyFirebaseToken, async (req, res) => {
+  const jobData = req.body;
+
+  if (!jobData.title || !jobData.date || !jobData.editedProposal) {
+    return res
+      .status(400)
+      .json({ error: "Missing title, date, or edited proposal" });
+  }
+
+  const rawKey = `${jobData.title}-${jobData.date}`;
+  const docKey = rawKey.replace(/[^\w]/gi, "_").slice(0, 100);
+
+  try {
+    const db = require("./db");
+    const jobRef = db.collection("jobs").doc(docKey);
+    const jobSnap = await jobRef.get();
+
+    if (!jobSnap.exists) {
+      return res.status(404).json({ error: "Job not found in Firestore" });
+    }
+
+    await jobRef.update({
+      proposal: jobData.editedProposal,
+      proposalEditedAt: new Date(),
+    });
+
+    console.log("✅ Proposal edited and saved in Firestore.");
+    res.json({ message: "Proposal updated successfully." });
+  } catch (error) {
+    console.error("❌ Error updating proposal in Firestore:", error);
+    res.status(500).json({ error: "Failed to update proposal" });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 Server running at http://localhost:${PORT}`);
 });
