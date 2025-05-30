@@ -9,15 +9,11 @@ const JobsTable = () => {
   const [showModal, setShowModal] = useState(false);
   const [proposalContent, setProposalContent] = useState("");
 
-  const handleGenerate = async (job) => {
-    try {
-      // If proposal exists locally, show modal immediately (no fetch)
-      if (job.proposal && job.proposal.trim().length > 0) {
-        setProposalContent(job.proposal);
-        setShowModal(true);
-        return;
-      }
+  const [isEditing, setIsEditing] = useState(false);
+  const [selectedJob, setSelectedJob] = useState(null);
 
+  const handleViewOrEditProposal = async (job) => {
+    try {
       const auth = getAuth();
       const user = auth.currentUser;
       if (!user) throw new Error("User not authenticated");
@@ -37,22 +33,54 @@ const JobsTable = () => {
 
       if (res.ok) {
         setProposalContent(data.proposal);
+        setSelectedJob(job); // Track current job
+        setIsEditing(false);
         setShowModal(true);
-
-        // Update local state so next time proposal exists and modal opens instantly
-        setData((prevData) =>
-          prevData.map((item) =>
-            item.title === job.title
-              ? { ...item, proposal: data.proposal }
-              : item
-          )
-        );
       } else {
-        alert(data.error || "Failed to generate proposal.");
+        alert("Failed to generate proposal.");
       }
     } catch (err) {
       console.error("Error generating proposal:", err);
       alert("Authentication or proposal generation failed.");
+    }
+  };
+
+  const handleSaveProposal = async () => {
+    try {
+      if (!selectedJob) return;
+
+      const auth = getAuth();
+      const user = auth.currentUser;
+      if (!user) throw new Error("User not authenticated");
+
+      const token = await user.getIdToken();
+
+      const payload = {
+        title: selectedJob.title,
+        date: selectedJob.date,
+        editedProposal: proposalContent,
+      };
+
+      const res = await fetch("http://localhost:3000/edit-proposal", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        alert("Proposal updated successfully!");
+        setShowModal(false);
+      } else {
+        const errData = await res.json();
+        console.error("Error updating proposal:", errData);
+        alert("Failed to update proposal.");
+      }
+    } catch (err) {
+      console.error("Error editing proposal:", err);
+      alert("Authentication or edit failed.");
     }
   };
 
@@ -65,7 +93,6 @@ const JobsTable = () => {
 
         const token = await user.getIdToken();
 
-        // console.log(token);
         const res = await fetch("http://localhost:3000/jobs", {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -103,18 +130,41 @@ const JobsTable = () => {
         <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-center justify-center px-4">
           <div className="bg-white max-w-2xl w-full p-6 rounded-lg shadow-lg space-y-4 relative">
             <h2 className="text-lg font-semibold text-gray-800">
-              Generated Proposal
+              {isEditing ? "Edit Proposal" : "Generated Proposal"}
             </h2>
-            <div className="text-sm text-gray-700 whitespace-pre-wrap max-h-[60vh] overflow-y-auto border p-3 rounded bg-gray-50">
-              {proposalContent}
-            </div>
-            <div className="flex justify-end">
+            {isEditing ? (
+              <textarea
+                className="w-full h-60 border p-3 text-sm rounded bg-gray-50"
+                value={proposalContent}
+                onChange={(e) => setProposalContent(e.target.value)}
+              />
+            ) : (
+              <div className="text-sm text-gray-700 whitespace-pre-wrap max-h-[60vh] overflow-y-auto border p-3 rounded bg-gray-50">
+                {proposalContent}
+              </div>
+            )}
+            <div className="flex justify-between">
               <button
                 onClick={() => setShowModal(false)}
-                className="mt-4 px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                className="px-4 py-2 bg-gray-300 text-gray-800 text-sm rounded hover:bg-gray-400"
               >
                 Close
               </button>
+              {isEditing ? (
+                <button
+                  onClick={handleSaveProposal}
+                  className="px-4 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700"
+                >
+                  Save Changes
+                </button>
+              ) : (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                >
+                  Edit Proposal
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -154,7 +204,7 @@ const JobsTable = () => {
                   <React.Fragment key={startIndex + idx}>
                     <tr className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                       <td className="border border-gray-300 px-4 py-2">
-                        {row.date}
+                        {new Date(row.date).toLocaleDateString("en-GB")}
                       </td>
                       <td className="border border-gray-300 px-4 py-2">
                         {row.title}
@@ -194,7 +244,7 @@ const JobsTable = () => {
                               ? "bg-blue-600 hover:bg-blue-700"
                               : "bg-gray-400 cursor-not-allowed"
                           }`}
-                          onClick={() => handleGenerate(row)}
+                          onClick={() => handleViewOrEditProposal(row)}
                         >
                           {row.proposal && row.proposal.trim().length > 0
                             ? "View Proposal"
